@@ -102,7 +102,7 @@ class PyCap2_Camera():
                 # Bug has been confirmed by FLIR, they probably are not going to fix it.
                 # So, try using registers instead:
                 bLevelReg = 0x800 # black level register is 800h
-                bLevelVal = 0x82000000 # black level value is contained in last 2 digits.
+                bLevelVal = 0x8200000B # black level value is contained in last 2 digits.
                                        # Do not edit other digits!
                 self.camera.writeRegister(bLevelReg,bLevelVal)
                 bLevel = self.camera.getProperty(PyCapture2.PROPERTY_TYPE.BRIGHTNESS)
