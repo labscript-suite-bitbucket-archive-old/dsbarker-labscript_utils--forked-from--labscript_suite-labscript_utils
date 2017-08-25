@@ -2,8 +2,12 @@
 #                                                                   #
 # PyCapture2_camera_server.py                                       #
 #                                                                   #
-# This camera server is an extension of camera_server.py,           #
-# which is part of the labscript suite.                             #
+# This file is part of the labscript suite (see                     #
+# http://labscriptsuite.org) and is licensed under the Simplified   #
+# BSD License. See the license.txt file in the root of the project  #
+# for the full license.                                             #
+#                                                                   #
+# This camera server is an extension of camera_server.py.           #
 # PyCapture2_camera_server implements a server and BLACS            #
 # cameras using FLIR's python wrapper for FlyCapture2.              #
 #                                                                   #
@@ -15,8 +19,11 @@
 # python PyCapture2_camera_server <cameraNameFromBlacs>             #
 # <width> <height> <offsetX> <offsetY>                              #
 # The optional inputs <width>, <height>, <offsetX>, and             #
-# <offsetY> define an ROI for the camera. The default ROI           #
-# is the full sensor.                                               #
+# <offsetY> define an acquistion ROI for the camera.                # 
+# The default ROI is the full sensor.                               #
+# Note that the acquisition ROI is overwritten on a per-shot        #
+# basis if your BLACS camera's acquisition_ROI property is          #
+# not None.                                                         #
 #                                                                   #
 # Author: dsbarker                                                  #
 #                                                                   #
@@ -45,7 +52,7 @@ import numpy as np
 check_version('zprocess', '1.3.3', '3.0')
 
 # Define the PyCap2_Camera class:
-class PyCap2_Camera():
+class PyCap2_Camera(object):
 
     def __init__(self, sn=None, alias=None, bus=None):
 
