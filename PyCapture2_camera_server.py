@@ -368,9 +368,8 @@ class PyCap2_CameraServer(CameraServer):
                 # all images should be same size:
                 for idx in range(n_acq):
                     if img_type[idx] == f_type:
-                        img_data = np.array(images[idx])
-                        img_proc = img_data[1::2]*2**8+img_data[0::2]
-                        imgs_toSave[f_type].append(img_proc.astype(np.uint16).reshape(n_Rows, n_Cols))
+                        img_data = np.array(images[idx],dtype=np.uint8).view(np.uint16)
+                        imgs_toSave[f_type].append(img_data.reshape(n_Rows, n_Cols))
                 group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
                 print(f_type + 
                     ' camera shots saving time: {s} '.format(s=str(time.time()
