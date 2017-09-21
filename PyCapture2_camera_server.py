@@ -377,8 +377,9 @@ class PyCap2_CameraServer(CameraServer):
                      + 's')
 
     def abort(self):
-        """Probably should do something here, but not sure what yet."""
-        pass
+        # If abort gets called, probably need to break out of grabMultiple.
+        # Put a dummy command into the queue to accomplish that.
+        self.command_queue.put(['abort', None])
 
 # acquisition_mainloop reads from a command queue and puts into a results queue.
 def acquisition_mainloop(command_queue, results_queue, bus, camera_name, h5_attrs, width, height, offX, offY):
@@ -417,6 +418,8 @@ def acquisition_mainloop(command_queue, results_queue, bus, camera_name, h5_attr
                     offY = args[3]
                     cam.setImageMode(width, height, offX, offY)
                 continue # skip put into results_queue
+            elif command == 'abort':
+                continue # dummy command to cause grabMultiple to break
             elif command == 'quit':
                 break
             else:
@@ -484,7 +487,7 @@ if __name__ == '__main__':
         server.shutdown_on_interrupt()
         command_queue.put(['quit', None])
         # The join should timeout so that infinite grab loops do not persist.
-        acquisition_thread.join(10.0)
+        acquisition_thread.join(1.0)
     else:
         print('No cameras detected.')
         sys.exit(0)
