@@ -419,7 +419,9 @@ def acquisition_mainloop(command_queue, results_queue, bus, camera_name, h5_attr
                     cam.setImageMode(width, height, offX, offY)
                 continue # skip put into results_queue
             elif command == 'abort':
-                continue # dummy command to cause grabMultiple to break
+                # command to cause grabMultiple to break
+                results_queue.get(timeout=1) # Pull bad images out of queue.
+                continue
             elif command == 'quit':
                 break
             else:
