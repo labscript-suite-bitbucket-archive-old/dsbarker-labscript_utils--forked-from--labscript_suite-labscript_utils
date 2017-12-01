@@ -19,7 +19,7 @@
 # python PyCapture2_camera_server <cameraNameFromBlacs>             #
 # <width> <height> <offsetX> <offsetY>                              #
 # The optional inputs <width>, <height>, <offsetX>, and             #
-# <offsetY> define an acquistion ROI for the camera.                # 
+# <offsetY> define an acquistion ROI for the camera.                #
 # The default ROI is the full sensor.                               #
 # Note that the acquisition ROI is overwritten on a per-shot        #
 # basis if your BLACS camera's acquisition_ROI property is          #
@@ -218,7 +218,6 @@ class PyCap2_Camera(object):
 
     # grab number of images specified by n_images
     def grabMultiple(self, n_images, comm_queue):
-
         imgs = []
         try:
             self.camera.startCapture()
@@ -231,9 +230,17 @@ class PyCap2_Camera(object):
         while idx < n_images and comm_queue.empty(): # Check queue to catch a quit command.
             try:
                 image = self.camera.retrieveBuffer()
-                imgs.append(image.getData())
+                # If it is the first image, get its dimensions
+                if idx==0:
+                    n_Rows = image.getRows()
+                    n_Cols = image.getCols()
+                    print("n_Rows = {0:d}, n_Cols = {1:d}".format(n_Rows,n_Cols))
+                # Immediately convert the image to a numpy array and store in
+                # imgs list because we suspect that the image structure
+                # returned by camera.retrieveBuffer() is not thread safe.
+                imgs.append(np.array(image.getData(),dtype=np.uint8).view(np.uint16))
                 if idx % 10 == 0:
-                    print('retrieved {i}th image'.format(i=idx))
+                    print('retrieved {i}th image of {j} images'.format(i=idx+1,j=n_images))
             except PyCapture2.Fc2error as fc2Err:
                 if idx == 0 and str(fc2Err) == '\'Timeout error.\'':
                     # Don't time out waiting for the first image.
@@ -245,19 +252,20 @@ class PyCap2_Camera(object):
 
         n_acq = len(imgs)
         print('got {a} images.'.format(a=n_acq))
-        if n_acq > 0:
-            n_Rows = image.getRows()
-            n_Cols = image.getCols()
-        else:
+        # In case of failure, return zeros for n_Rows and n_Cols.  In case of
+        # success, resize each image into n_Rows and n_Cols
+        if n_acq == 0:
             n_Rows = 0
             n_Cols = 0
+        else:
+            for img in imgs:
+                img.resize(n_Rows,n_Cols)
         try:
             self.camera.stopCapture()
             print('Capture stopped.')
         except PyCapture2.Fc2error as fc2Err:
             print('Error stopping capture: {e}'.format(e=fc2Err))
             print('Restart the server.')
-
         return imgs, n_Rows, n_Cols
 
     # change timeout on the fly.
@@ -368,10 +376,12 @@ class PyCap2_CameraServer(CameraServer):
                 # all images should be same size:
                 for idx in range(n_acq):
                     if img_type[idx] == f_type:
-                        img_data = np.array(images[idx],dtype=np.uint8).view(np.uint16)
-                        imgs_toSave[f_type].append(img_data.reshape(n_Rows, n_Cols))
+                        imgs_toSave[f_type].append(images[idx])
+                # print('Creating dataset.')
                 group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
-                print(f_type + 
+                """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
+                group.create_dataset(f_type,data=np.array(images_to_save))"""
+                print(f_type +
                     ' camera shots saving time: {s} '.format(s=str(time.time()
                         -start_time))
                      + 's')
@@ -411,7 +421,7 @@ def acquisition_mainloop(command_queue, results_queue, bus, camera_name, h5_attr
                 continue # skip put into results_queue
             elif command == 'set_ROI':
                 # Only perform ROI reset when necessary.
-                if (width,height,offX,offY) != args: 
+                if (width,height,offX,offY) != args:
                     width = args[0]
                     height = args[1]
                     offX = args[2]
@@ -493,4 +503,3 @@ if __name__ == '__main__':
     else:
         print('No cameras detected.')
         sys.exit(0)
-    
