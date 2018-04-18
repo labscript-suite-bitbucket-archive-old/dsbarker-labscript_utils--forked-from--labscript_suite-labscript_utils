@@ -378,14 +378,12 @@ class PyCap2_CameraServer(CameraServer):
                     for idx in range(n_acq):
                         if img_type[idx] == f_type:
                             imgs_toSave[f_type].append(images[idx])
-                            # print('Creating dataset.')
-                            group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
-                            """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
-                            group.create_dataset(f_type,data=np.array(images_to_save))"""
-                            print(f_type +
-                                ' camera shots saving time: {s} '.format(s=str(time.time()
-                                -start_time))
-                                + 's')
+                    # print('Creating dataset.')
+                    group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
+                    """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
+                    group.create_dataset(f_type,data=np.array(images_to_save))"""
+                    print(f_type + ' camera shots saving time:  {s}' \
+                    .format(s=str(time.time()-start_time))+ 's')
 
     def abort(self):
         # If abort gets called, probably need to break out of grabMultiple.
