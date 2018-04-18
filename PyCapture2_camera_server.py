@@ -246,7 +246,7 @@ class PyCap2_Camera(object):
                     # Don't time out waiting for the first image.
                     idx -= 1
                 else:
-                    print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx))
+                    print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx+1))
                     break
             idx += 1
 
@@ -366,25 +366,24 @@ class PyCap2_CameraServer(CameraServer):
                 images = []
             n_acq = len(images)
             print('Saving {a} images.'.format(a=n_acq))
-            # Create the group in which we will save the images:
-            group = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
-            # Save images:
-            imgs_toSave = {}
-            for f_type in img_set:
-                imgs_toSave[f_type] = []
-                idx = 0
-                # all images should be same size:
-                for idx in range(n_acq):
-                    if img_type[idx] == f_type:
-                        imgs_toSave[f_type].append(images[idx])
-                # print('Creating dataset.')
-                group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
-                """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
-                group.create_dataset(f_type,data=np.array(images_to_save))"""
-                print(f_type +
-                    ' camera shots saving time: {s} '.format(s=str(time.time()
-                        -start_time))
-                     + 's')
+            if images: # Only run save routine if images is non-empty
+                # Create the group in which we will save the images:
+                group = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+                # Save images:
+                imgs_toSave = {}
+                for f_type in img_set:
+                    imgs_toSave[f_type] = []
+                    idx = 0
+                    # all images should be same size:
+                    for idx in range(n_acq):
+                        if img_type[idx] == f_type:
+                            imgs_toSave[f_type].append(images[idx])
+                    # print('Creating dataset.')
+                    group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
+                    """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
+                    group.create_dataset(f_type,data=np.array(images_to_save))"""
+                    print(f_type + ' camera shots saving time:  {s}' \
+                    .format(s=str(time.time()-start_time))+ 's')
 
     def abort(self):
         # If abort gets called, probably need to break out of grabMultiple.
