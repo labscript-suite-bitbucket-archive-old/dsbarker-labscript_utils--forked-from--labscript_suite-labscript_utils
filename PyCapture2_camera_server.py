@@ -39,10 +39,13 @@ from __future__ import unicode_literals
 from __future__ import division
 import sys
 import time
-import queue as Queue
 import PyCapture2
 import zprocess
-from labscript_utils import check_version
+from labscript_utils import check_version, PY2
+if PY2:
+    import Queue
+else:
+    import queue as Queue
 import labscript_utils.shared_drive
 # importing this wraps zlock calls around HDF file openings and closings:
 import labscript_utils.h5_lock
