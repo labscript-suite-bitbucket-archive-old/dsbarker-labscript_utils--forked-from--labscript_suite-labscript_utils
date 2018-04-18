@@ -39,7 +39,7 @@ from __future__ import unicode_literals
 from __future__ import division
 import sys
 import time
-import Queue
+import queue as Queue
 import PyCapture2
 import zprocess
 from labscript_utils import check_version
