@@ -39,14 +39,18 @@ from __future__ import unicode_literals
 from __future__ import division
 import sys
 import time
-import Queue
 import PyCapture2
 import zprocess
-from labscript_utils import check_version
+from labscript_utils import check_version, PY2
+if PY2:
+    import Queue
+else:
+    import queue as Queue
 import labscript_utils.shared_drive
 # importing this wraps zlock calls around HDF file openings and closings:
 import labscript_utils.h5_lock
 from labscript_utils.camera_server import CameraServer
+from labscript_utils.connections import _ensure_str
 import h5py
 import numpy as np
 check_version('zprocess', '1.3.3', '3.0')
@@ -242,12 +246,20 @@ class PyCap2_Camera(object):
                 if idx % 10 == 0:
                     print('retrieved {i}th image of {j} images'.format(i=idx+1,j=n_images))
             except PyCapture2.Fc2error as fc2Err:
-                if idx == 0 and str(fc2Err) == '\'Timeout error.\'':
-                    # Don't time out waiting for the first image.
-                    idx -= 1
+                if PY2: #PyCapture2 is dumb in python 3.
+                    if idx == 0 and fc2Err == '\'Timeout error.\'':
+                        # Don't time out waiting for the first image.
+                        idx -= 1
+                    else:
+                        print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx+1))
+                        break
                 else:
-                    print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx+1))
-                    break
+                    if idx == 0 and fc2Err == 'b\'Timeout error.\'':
+                        # Don't time out waiting for the first image.
+                        idx -= 1
+                    else:
+                        print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx+1))
+                        break
             idx += 1
 
         n_acq = len(imgs)
@@ -355,6 +367,7 @@ class PyCap2_CameraServer(CameraServer):
                 print('no camera exposures in this shot.')
                 return
             n_images = len(group['EXPOSURES'])
+            # For some reason, the h5 file is being read as bytes and not a string:
             img_type = f['devices'][groupname]['EXPOSURES']['frametype']
             img_set = list(set(img_type))
             try:
@@ -382,8 +395,8 @@ class PyCap2_CameraServer(CameraServer):
                     group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
                     """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
                     group.create_dataset(f_type,data=np.array(images_to_save))"""
-                    print(f_type + ' camera shots saving time:  {s}' \
-                    .format(s=str(time.time()-start_time))+ 's')
+                    print(_ensure_str(f_type) + ' camera shots saving time: ' + \
+                          '{0:.6f}'.format(time.time() - start_time)+ 's')
 
     def abort(self):
         # If abort gets called, probably need to break out of grabMultiple.
