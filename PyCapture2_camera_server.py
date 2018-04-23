@@ -254,7 +254,7 @@ class PyCap2_Camera(object):
                         print('Error retrieving buffer: {e} at {i}th image.'.format(e=fc2Err,i=idx+1))
                         break
                 else:
-                    if idx == 0 and fc2Err == 'b\'Timeout error.\'':
+                    if idx == 0 and _ensure_str(fc2Err) == 'b\'Timeout error.\'':
                         # Don't time out waiting for the first image.
                         idx -= 1
                     else:
