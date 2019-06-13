@@ -101,7 +101,7 @@ def get_property(property):
     return val
 
 
-def setup_camera(cam, slope='rising'):
+def setup_camera(cam, slope, bitdepth):
     """
     This function turns off certain camera features like gain, gamma (if available),
     sharpness (if available).  It also sets
@@ -134,6 +134,16 @@ def setup_camera(cam, slope='rising'):
         if cam.SharpeningEnable.GetAccessMode() > PySpin.NA: #Not Impelemtned
             logger.info('Turning off sharpening ...')
             set_property(cam.SharpeningEnable, False)
+
+        # Set pixel depth:
+        if cam.PixelFormat.GetAccessMode() == PySpin.RW:
+            if bitdepth>8:
+                logger.info('Setting pixel bits to 16 for %d bit depth.' % bitdepth)
+                set_property(cam.PixelFormat, PySpin.PixelFormat_Mono16)
+            else:
+                logger.info('Setting pixel bits to 8 for %d bit depth.' % bitdepth)
+                set_property(cam.PixelFormat, PySpin.PixelFormat_Mono8)
+
 
         # Ensure trigger mode off
         # The trigger must be disabled in order to configure whether the source
@@ -173,7 +183,7 @@ def setup_camera(cam, slope='rising'):
         logger.error('Error: %s' % ex)
 
 
-def set_ROI(cam, offsetX, offsetY, width, height):
+def set_ROI(cam, width, height, offsetX, offsetY):
     """
     set_ROI sets the region of intereEst by specifying:
         offsetX: X (width) offset in pixels
@@ -198,7 +208,7 @@ def set_ROI(cam, offsetX, offsetY, width, height):
         if width > cam.Height.GetMax() or width < cam.Height.GetMin():
             logger.error('Width %d either too large or too small!' % width)
         else:
-            set_property(cam.Width, width)
+            set_property(cam.Width, int(width))
 
         logger.debug('Setting height ...')
         if (height - cam.Height.GetMin()) % 2 != 0:
@@ -209,7 +219,7 @@ def set_ROI(cam, offsetX, offsetY, width, height):
         if height > cam.Height.GetMax() or height < cam.Height.GetMin():
             logger.error('Height %d either too large or too small!' % height)
         else:
-            set_property(cam.Height, height)
+            set_property(cam.Height, int(height))
 
         logger.debug('Setting offsetX...')
         if (offsetX - cam.OffsetX.GetMin()) % 8 != 0:
@@ -219,7 +229,7 @@ def set_ROI(cam, offsetX, offsetY, width, height):
         if offsetX > cam.OffsetX.GetMax() or offsetX < cam.OffsetX.GetMin():
             logger.error('X offset %d either too large or too small!' % offsetX)
         else:
-            set_property(cam.OffsetX, offsetX)
+            set_property(cam.OffsetX, int(offsetX))
 
         logger.debug('Setting offsetY...')
         if (offsetY - cam.OffsetY.GetMin()) % 8 != 0:
@@ -229,7 +239,7 @@ def set_ROI(cam, offsetX, offsetY, width, height):
         if offsetY > cam.OffsetY.GetMax() or offsetY < cam.OffsetY.GetMin():
             logger.error('X offset %d either too large or too small!' % offsetX)
         else:
-            set_property(cam.OffsetY, offsetY)
+            set_property(cam.OffsetY, int(offsetY))
 
         offsetX = get_property(cam.OffsetX)
         offsetY = get_property(cam.OffsetY)
@@ -242,7 +252,8 @@ def set_ROI(cam, offsetX, offsetY, width, height):
         logger.error('Error: %s' % ex)
 
 
-def acquire_multiple_images(cam, n_images, timeout=PySpin.EVENT_TIMEOUT_INFINITE,
+def acquire_multiple_images(cam, n_images,
+                            timeout=PySpin.EVENT_TIMEOUT_INFINITE,
                             comm_queue=Queue.Queue()):
     # Set the number of acqueistion images:
     set_property(cam.AcquisitionFrameCount, n_images)
@@ -253,7 +264,10 @@ def acquire_multiple_images(cam, n_images, timeout=PySpin.EVENT_TIMEOUT_INFINITE
     cam.BeginAcquisition()
     logger.info('Capture started for %d images.' % n_images)
 
-    imgs = np.zeros((n_images, height, width))
+    if get_property(cam.PixelFormat) == PySpin.PixelFormat_Mono16:
+        imgs = np.zeros((n_images, height, width), dtype='uint16')
+    else:
+        imgs = np.zeros((n_images, height, width), dtype='uint8')
 
     try:
         ii=0
@@ -266,7 +280,7 @@ def acquire_multiple_images(cam, n_images, timeout=PySpin.EVENT_TIMEOUT_INFINITE
                 logger.warning('Image incomplete with image status %d ...' % image_result.GetImageStatus())
                 break
             else:
-                imgs[ii] = np.array(image_result.GetData(), dtype='uint8').reshape(height, width)
+                imgs[ii] = np.array(image_result.GetData()).reshape(height, width)
                 if ii % 10 == 0 and n_images>15:
                     logger.info('retrieved {i}th image of {j} images'.format(i=ii+1,j=n_images))
                 else:
@@ -400,7 +414,7 @@ class PySpin_CameraServer(zprocess.ZMQServer):
             # Find max time between images:
             if n_images > 1:
                 exp_times = f['devices'][groupname]['EXPOSURES']['time']
-                max_wait = 1.5*max(abs(x - y) for (x, y) in zip(exp_times[1:], exp_times[:-1]))
+                max_wait = 1.5*max(exp_times[0], max(abs(x - y) for (x, y) in zip(exp_times[1:], exp_times[:-1])))
             else:
                 max_wait = 0.1
             # Use acquisition_ROI property to set camera ROI:
@@ -416,7 +430,7 @@ class PySpin_CameraServer(zprocess.ZMQServer):
         self.logger.info('Configured for %d images and max_wait = %f s.' %
                          (n_images, max_wait))
         # Tell the acquisition mainloop to get some images:
-        self.command_queue.put(['acquire', (n_images, int(1500*max_wait))])
+        self.command_queue.put(['acquire', (n_images, int(1000*max_wait))])
 
     def transition_to_static(self, h5_filepath):
         start_time = time.time()
@@ -445,9 +459,13 @@ class PySpin_CameraServer(zprocess.ZMQServer):
             self.logger.info('Saving {a} images.'.format(a=n_acq))
             # Create the group in which we will save the images:
             group = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+            self.logger.info(
+                'Preparation for saving time: ' + \
+                '{0:.6f}'.format(time.time() - start_time)+ 's')
             # Save images:
             imgs_toSave = {}
             for f_type in img_set:
+                start_time = time.time()
                 imgs_toSave[f_type] = []
                 idx = 0
                 # all images should be same size:
@@ -486,12 +504,12 @@ def acquisition_mainloop(command_queue, results_queue, camera, h5_attrs):
             result = acquire_multiple_images(camera, n_images, timeout)
         elif command == 'set_ROI':
             # Only perform ROI reset when necessary.
-            if (width,height,offX,offY) != args:
-                width = args[0]
-                height = args[1]
-                offX = args[2]
-                offY = args[3]
-                pyspin_utils.set_ROI(cam, width, height, offX, offY)
+            #if (width,height,offX,offY) != args:
+            width = args[0]
+            height = args[1]
+            offX = args[2]
+            offY = args[3]
+            set_ROI(cam, width, height, offX, offY)
             continue # skip put into results_queue
         elif command == 'abort':
             # command to cause grabMultiple to break
@@ -533,7 +551,7 @@ if __name__ == '__main__':
     # Get the h5 path and camera properties.
     logger_main.debug('Getting connection table.')
     h5_filepath = lc.get('paths', 'connection_table_h5')
-    with h5py.File(h5_filepath) as f:
+    with h5py.File(h5_filepath, 'r') as f:
         h5_attrs = labscript_utils.properties.get(f, camera_name,
                                                    'device_properties')
         h5_conn = labscript_utils.properties.get(f, camera_name,
@@ -561,7 +579,8 @@ if __name__ == '__main__':
             cam = camList.GetBySerial(str(h5_attrs['serial_number']))
             cam.Init()
             print_device_info(cam)
-            setup_camera(cam, slope=h5_attrs['trigger_edge_type'])
+            setup_camera(cam, slope=h5_attrs['trigger_edge_type'],
+                         bitdepth=h5_attrs['bit_depth'])
 
             # Start the camera server:
             server = PySpin_CameraServer(h5_conn['BIAS_port'], camera_name,
