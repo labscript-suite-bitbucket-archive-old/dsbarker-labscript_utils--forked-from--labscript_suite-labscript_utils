@@ -20,6 +20,9 @@ from socket import gethostbyname
 from distutils.version import LooseVersion
 import zmq
 
+from labscript_utils import check_version
+check_version('zprocess', '2.13.0', '3.0.0')
+
 import zprocess
 import zprocess.process_tree
 from zprocess.security import SecureContext
@@ -29,8 +32,6 @@ import zprocess.zlog
 import zprocess.zlock
 import zprocess.remote
 
-from labscript_utils import check_version
-check_version('zprocess', '2.11.7', '3.0.0')
 
 """This module is a number of wrappers around zprocess objects that configures them with
 the settings in LabConfig with regard to security, and the host and port of the zlock
@@ -80,16 +81,16 @@ def get_config():
         config['shared_secret'] = open(shared_secret_file).read().strip()
         config['shared_secret_file'] = shared_secret_file
     try:
-        config['allow_insecure'] = labconfig.get('security', 'allow_insecure')
+        config['allow_insecure'] = labconfig.getboolean('security', 'allow_insecure')
     except (labconfig.NoOptionError, labconfig.NoSectionError):
         # Default will be set to False once the security rollout is complete:
         config['allow_insecure'] = True
     try:
-        config['logging_maxBytes'] = int(labconfig.get('logging', 'maxBytes'))
+        config['logging_maxBytes'] = labconfig.getint('logging', 'maxBytes')
     except (labconfig.NoOptionError, labconfig.NoSectionError):
         config['logging_maxBytes'] = 1024 * 1024 * 50
     try:
-        config['logging_backupCount'] = int(labconfig.get('logging', 'backupCount'))
+        config['logging_backupCount'] = labconfig.getint('logging', 'backupCount')
     except (labconfig.NoOptionError, labconfig.NoSectionError):
         config['logging_backupCount'] = 1
     _cached_config = config
@@ -184,19 +185,22 @@ class ZMQClient(zprocess.ZMQClient):
 
     _instance = None
 
+    def __init__(self):
+        config = get_config()
+        shared_secret = config['shared_secret']
+        allow_insecure = config['allow_insecure']
+        zprocess.ZMQClient.__init__(
+            self, shared_secret=shared_secret, allow_insecure=allow_insecure
+        )
+
     @classmethod
     def instance(cls):
         # Return previously initialised singleton:
-        if cls._instance is not None:
-            return cls._instance
-        # Otherwise, create that singleton and return it:
-        config = get_config()
-        cls._instance = cls(
-            shared_secret=config['shared_secret'],
-            allow_insecure=config['allow_insecure'],
-        )
+        if cls._instance is None:
+            # Create singleton:
+            cls._instance = cls()
         return cls._instance
-
+        
 
 class Context(SecureContext):
     """Subclass of zprocess.security.SecureContext configured with settings from
@@ -274,9 +278,10 @@ def zmq_push_raw(*args, **kwargs):
     return ZMQClient.instance().push_raw(*args, **kwargs)
 
 
-def RemoteProcessClient(host):
-    config = get_config()
-    port = config['zprocess_remote_port']
+def RemoteProcessClient(host, port=None):
+    if port is None:
+        config = get_config()
+        port = config['zprocess_remote_port']
     return ProcessTree.instance().remote_process_client(host, port)
 
 
