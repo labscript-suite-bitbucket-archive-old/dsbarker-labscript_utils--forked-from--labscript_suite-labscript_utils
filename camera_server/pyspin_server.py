@@ -407,16 +407,29 @@ class PySpin_CameraServer(zprocess.ZMQServer):
             groupname = self.camera_name
             group = f['devices'][groupname]
             props = labscript_utils.properties.get(f, camera_name,'device_properties')
-            if not 'EXPOSURES' in group:
-                print('no camera exposures in this shot.')
+            n_images = 0
+            exp_times = []
+
+            if not 'EXPOSURES' in group and not 'VIDEOS' in group:
+                print('no camera exposures or videos in this shot.')
                 return
-            n_images = len(group['EXPOSURES'])
+            #n_images = len(group['EXPOSURES'])
+            if 'EXPOSURES' in group:
+                n_images += len(group['EXPOSURES'])
+                exp_times.append(group['EXPOSURES']['time'])
+
+            if 'VIDEOS' in group:
+                for videoFrameCount in group['VIDEOS']['num_frames']:
+                    n_images += videoFrameCount
+                for videoFrameTimes in group['VIDEOS']['time']:
+                    exp_times.append(videoFrameTimes)
+
             # Find max time between images:
             if n_images > 1:
-                exp_times = f['devices'][groupname]['EXPOSURES']['time']
                 max_wait = 1.5*max(exp_times[0], max(abs(x - y) for (x, y) in zip(exp_times[1:], exp_times[:-1])))
             else:
                 max_wait = 0.1
+
             # Use acquisition_ROI property to set camera ROI:
             if 'acquisition_ROI' in props:
                 if props['acquisition_ROI'] is not None:
@@ -437,48 +450,73 @@ class PySpin_CameraServer(zprocess.ZMQServer):
         with h5py.File(h5_filepath) as f:
             groupname = self.camera_name
             group = f['devices'][groupname]
-            if not 'EXPOSURES' in group:
-                self.logger.warning('no camera exposures in this shot.')
+            if not 'EXPOSURES' in group and not 'VIDEOS' in group:
+                self.logger.warning('no camera exposures or videos in this shot.')
                 return
-            n_images = len(group['EXPOSURES'])
-            # For some reason, the h5 file is being read as bytes and not a string:
-            img_type = f['devices'][groupname]['EXPOSURES']['frametype']
-            img_set = list(set(img_type))
+
+            if 'EXPOSURES' in group:
+                n_images += len(group['EXPOSURES'])
+                exp_times.append(group['EXPOSURES']['time'])
+                exposuresGroup = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+
+            if 'VIDEOS' in group:
+                for videoFrameCount in group['VIDEOS']['num_frames']:
+                    n_images += videoFrameCount
+                videosGroup = f.create_group('/videos/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+
             try:
-                images = self.results_queue.get(timeout=1)
+                images = self.results_queue.get(timeout=1) #returned in time order
             except Queue.Empty:
                 self.logger.error('There was some problem in the acquisition!')
                 images = []
 
             # The number of images that comes back must be equal
             if len(images) != n_images:
+                #If this error is thrown, there is most likely an issue with the range() function implemented in PythonCamera.py
                 raise ValueError('Did not capture all the images expected!')
 
             # Save images only if there
             n_acq = len(images)
             self.logger.info('Saving {a} images.'.format(a=n_acq))
-            # Create the group in which we will save the images:
-            group = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+
+            #img_type = []
+            img_type_list = [] #double array or single? how to sort it?
+            if 'EXPOSURES' in group:
+                for exposure in group['EXPOSURES']:
+                    img_type_list.append(imageTime, exposure['name'])
+            if 'VIDEOS' in group:
+                for video in group['VIDEOS']:
+                        for frameTime in range(video['time'], video['time'] + video['video_length'], video['time_between_frames']): #video.get('time'), video.get('time_between_frames'), video.get('time') + video.get('video_length')
+                            img_type_list.append(frameTime, video['name']) #video.get('name')
+
+            img_type_list = sorted(img_type_list) #sorts them by time?
+            img_type = [img_type_list_i[1] for img_type_list_i in img_type_list]
+
+            img_set = list(set(img_type))
+
             self.logger.info(
                 'Preparation for saving time: ' + \
                 '{0:.6f}'.format(time.time() - start_time)+ 's')
+
             # Save images:
-            imgs_toSave = {}
             for f_type in img_set:
                 start_time = time.time()
-                imgs_toSave[f_type] = []
-                idx = 0
-                # all images should be same size:
-                for idx in range(n_acq):
-                    if img_type[idx] == f_type:
-                        imgs_toSave[f_type].append(images[idx])
-                # print('Creating dataset.')
-                group.create_dataset(f_type,data=np.array(imgs_toSave[f_type]))
-                """images_to_save = [imgs[idx] if img_type[idx] == f_type for idx in range(n_acq)]
+
+                idx = [img_type_list_i[1] == f_type for img_type_list_i in img_type_list]
+
+                #The below code will create a data set labeled 'exposures' under /images/... along with
+                #storing the videos under /videos/.../video.name
+                if f_type not in group['VIDEOS']['name']:
+                    exposuresGroup.create_dataset(f_type, data=images[idx]) #May have to force array collapse
+                else:
+                    videosGroup.create_dataset(f_type, data=images[idx])
+
+                """images_to_save = [imgs[idx] if img_ type[idx] == f_type for idx in range(n_acq)]
                 group.create_dataset(f_type,data=np.array(images_to_save))"""
+
                 self.logger.info(
-                    _ensure_str(f_type) + ' camera shots saving time: ' + \
-                    '{0:.6f}'.format(time.time() - start_time)+ 's')
+                    _ensure_str(f_type) + ' camera shots saving time: ' + \ #Don't think I have to change this
+                    '{0:.6f}'.format(time.time() - start_time) + 's')
 
     def abort(self):
         # If abort gets called, probably need to break out of grabMultiple.
