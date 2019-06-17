@@ -1,2 +1,3 @@
 syntax: glob
 *.pyc
+camera_server/pyspin_server.log

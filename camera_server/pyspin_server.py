@@ -8,15 +8,15 @@
 # for the full license.                                             #
 #                                                                   #
 # This camera server is an extension of camera_server.py.           #
-# PySpin_camera_server implements a server and BLACS            #
-# cameras using FLIR's python wrapper for FlyCapture2.              #
+# pyspin_server implements a server and BLACS            #
+# cameras using FLIR's python wrapper for PySpin.              #
 #                                                                   #
 # To start the server:                                              #
 # Run a command line in the directory containing this file          #
 # and type:                                                         #
-# python PySpin_camera_server.py <cameraNameFromBlacs>          #
+# python pyspin_server.py <cameraNameFromBlacs>          #
 # or type:                                                          #
-# python PySpin_camera_server <cameraNameFromBlacs>             #
+# python pyspin_server <cameraNameFromBlacs>             #
 # <width> <height> <offsetX> <offsetY>                              #
 # The optional inputs <width>, <height>, <offsetX>, and             #
 # <offsetY> define an acquistion ROI for the camera.                #
@@ -415,14 +415,14 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                 return
             #n_images = len(group['EXPOSURES'])
             if 'EXPOSURES' in group:
-                n_images += len(group['EXPOSURES'])
-                exp_times.append(group['EXPOSURES']['time'])
+                n_images = len(group['EXPOSURES'])
+                exp_times = group['EXPOSURES']['time']
 
             if 'VIDEOS' in group:
-                for videoFrameCount in group['VIDEOS']['num_frames']:
-                    n_images += videoFrameCount
+                for videoFrameCount in group['VIDEOS']['number_of_frames']:
+                    n_images += int(videoFrameCount)
                 for videoFrameTimes in group['VIDEOS']['time']:
-                    exp_times.append(videoFrameTimes)
+                    np.append(exp_times, videoFrameTimes)
 
             # Find max time between images:
             if n_images > 1:
@@ -455,14 +455,18 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                 return
 
             if 'EXPOSURES' in group:
-                n_images += len(group['EXPOSURES'])
-                exp_times.append(group['EXPOSURES']['time'])
+                n_images = len(group['EXPOSURES'])
+                exp_times = group['EXPOSURES']['time']
                 exposuresGroup = f.create_group('/images/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+            else:
+                exposuresGroup = None
 
             if 'VIDEOS' in group:
-                for videoFrameCount in group['VIDEOS']['num_frames']:
+                for videoFrameCount in group['VIDEOS']['number_of_frames']:
                     n_images += videoFrameCount
                 videosGroup = f.create_group('/videos/' + f['devices'][groupname].attrs.get('orientation') + '/' + groupname)
+            else:
+                videosGroup = None
 
             try:
                 images = self.results_queue.get(timeout=1) #returned in time order
@@ -481,13 +485,13 @@ class PySpin_CameraServer(zprocess.ZMQServer):
 
             #img_type = []
             img_type_list = [] #double array or single? how to sort it?
-            if 'EXPOSURES' in group:
+            if not exposuresGroup is None:
                 for exposure in group['EXPOSURES']:
-                    img_type_list.append(imageTime, exposure['name'])
-            if 'VIDEOS' in group:
+                    img_type_list.append((exposure['time'], exposure['name']))
+            if not videosGroup is None:
                 for video in group['VIDEOS']:
-                        for frameTime in range(video['time'], video['time'] + video['video_length'], video['time_between_frames']): #video.get('time'), video.get('time_between_frames'), video.get('time') + video.get('video_length')
-                            img_type_list.append(frameTime, video['name']) #video.get('name')
+                        for frameTime in np.arange(video['time'], video['time'] + video['video_length'], video['time_between_frames']): #video.get('time'), video.get('time_between_frames'), video.get('time') + video.get('video_length')
+                            img_type_list.append((frameTime, video['name'])) #video.get('name')
 
             img_type_list = sorted(img_type_list) #sorts them by time?
             img_type = [img_type_list_i[1] for img_type_list_i in img_type_list]
@@ -506,16 +510,15 @@ class PySpin_CameraServer(zprocess.ZMQServer):
 
                 #The below code will create a data set labeled 'exposures' under /images/... along with
                 #storing the videos under /videos/.../video.name
-                if f_type not in group['VIDEOS']['name']:
-                    exposuresGroup.create_dataset(f_type, data=images[idx]) #May have to force array collapse
-                else:
+                if 'EXPOSURES' in group and f_type in group['EXPOSURES']['name']:
+                    exposuresGroup.create_dataset(f_type, data=images[idx][0])
+                elif 'VIDEOS' in group and f_type in group['VIDEOS']['name']:
                     videosGroup.create_dataset(f_type, data=images[idx])
-
-                """images_to_save = [imgs[idx] if img_ type[idx] == f_type for idx in range(n_acq)]
-                group.create_dataset(f_type,data=np.array(images_to_save))"""
+                else:
+                    raise ValueError("Do not recognize frame!")
 
                 self.logger.info(
-                    _ensure_str(f_type) + ' camera shots saving time: ' + \ #Don't think I have to change this
+                    _ensure_str(f_type) + ' camera shots saving time: ' + \
                     '{0:.6f}'.format(time.time() - start_time) + 's')
 
     def abort(self):
