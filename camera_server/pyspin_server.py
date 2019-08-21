@@ -205,7 +205,7 @@ def set_ROI(cam, width, height, offsetX, offsetY):
             width = 16*int(np.ceil( (width - cam.Width.GetMin())/16. )) +\
                 cam.Width.GetMin()
             logger.warning('Setting width to %d to match rules!' % width)
-        if width > cam.Height.GetMax() or width < cam.Height.GetMin():
+        if width > cam.Width.GetMax() or width < cam.Width.GetMin():
             logger.error('Width %d either too large or too small!' % width)
         else:
             set_property(cam.Width, int(width))
@@ -235,9 +235,9 @@ def set_ROI(cam, width, height, offsetX, offsetY):
         if (offsetY - cam.OffsetY.GetMin()) % 8 != 0:
             offsetY = 2*int(np.round( (offsetY - cam.OffsetY.GetMin())/2. )) +\
                 cam.OffsetY.GetMin()
-            logger.warning('Setting X offset to %d to match rules!' % offsetX)
+            logger.warning('Setting Y offset to %d to match rules!' % offsetX)
         if offsetY > cam.OffsetY.GetMax() or offsetY < cam.OffsetY.GetMin():
-            logger.error('X offset %d either too large or too small!' % offsetX)
+            logger.error('Y offset %d either too large or too small!' % offsetX)
         else:
             set_property(cam.OffsetY, int(offsetY))
 
@@ -428,7 +428,7 @@ class PySpin_CameraServer(zprocess.ZMQServer):
             if n_images > 1:
                 max_wait = 1.5*max(exp_times[0], max(abs(x - y) for (x, y) in zip(exp_times[1:], exp_times[:-1])))
             else:
-                max_wait = 0.1
+                max_wait = 1.5*exp_times[0] # Don't timeout if there's one image.
 
             # Use acquisition_ROI property to set camera ROI:
             if 'acquisition_ROI' in props:
