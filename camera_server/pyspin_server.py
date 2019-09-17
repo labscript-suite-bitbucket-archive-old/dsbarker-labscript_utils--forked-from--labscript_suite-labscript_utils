@@ -39,12 +39,12 @@ if PY2:
     import Queue
 else:
     import queue as Queue
-import PySpin
 import numpy as np
 import zprocess
 import sys
 import time
 import logging
+import PySpin
 
 import labscript_utils.h5_lock
 import h5py
