@@ -233,11 +233,11 @@ def set_ROI(cam, width, height, offsetX, offsetY):
 
         logger.debug('Setting offsetY...')
         if (offsetY - cam.OffsetY.GetMin()) % 8 != 0:
-            offsetY = 2*int(np.round( (offsetY - cam.OffsetY.GetMin())/2. )) +\
+            offsetY = 8*int(np.round( (offsetY - cam.OffsetY.GetMin())/8. )) +\
                 cam.OffsetY.GetMin()
-            logger.warning('Setting Y offset to %d to match rules!' % offsetX)
+            logger.warning('Setting Y offset to %d to match rules!' % offsetY)
         if offsetY > cam.OffsetY.GetMax() or offsetY < cam.OffsetY.GetMin():
-            logger.error('Y offset %d either too large or too small!' % offsetX)
+            logger.error('Y offset %d either too large or too small!' % offsetY)
         else:
             set_property(cam.OffsetY, int(offsetY))
 
@@ -437,7 +437,7 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                     height = props['acquisition_ROI'][1]
                     offX = props['acquisition_ROI'][2]
                     offY = props['acquisition_ROI'][3]
-                    print('resetting acquisition ROI')
+                    self.logger.info('Resetting acquisition ROI')
                     # Tell acquisition mainloop to reset ROI:
                     self.command_queue.put(['set_ROI', (width, height, offX, offY)])
         self.logger.info('Configured for %d images and max_wait = %f s.' %
@@ -495,7 +495,6 @@ class PySpin_CameraServer(zprocess.ZMQServer):
 
             img_type_list = sorted(img_type_list) #sorts them by time?
             img_type = [img_type_list_i[1] for img_type_list_i in img_type_list]
-
             img_set = list(set(img_type))
 
             self.logger.info(
@@ -507,7 +506,6 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                 start_time = time.time()
 
                 idx = [img_type_list_i[1] == f_type for img_type_list_i in img_type_list]
-
                 #The below code will create a data set labeled 'exposures' under /images/... along with
                 #storing the videos under /videos/.../video.name
                 if 'EXPOSURES' in group and f_type in group['EXPOSURES']['name']:
