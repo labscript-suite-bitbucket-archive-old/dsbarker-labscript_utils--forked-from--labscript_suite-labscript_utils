@@ -232,8 +232,8 @@ def set_ROI(cam, width, height, offsetX, offsetY):
             set_property(cam.OffsetX, int(offsetX))
 
         logger.debug('Setting offsetY...')
-        if (offsetY - cam.OffsetY.GetMin()) % 8 != 0:
-            offsetY = 8*int(np.round( (offsetY - cam.OffsetY.GetMin())/8. )) +\
+        if (offsetY - cam.OffsetY.GetMin()) % 2 != 0:
+            offsetY = 2*int(np.round( (offsetY - cam.OffsetY.GetMin())/2. )) +\
                 cam.OffsetY.GetMin()
             logger.warning('Setting Y offset to %d to match rules!' % offsetY)
         if offsetY > cam.OffsetY.GetMax() or offsetY < cam.OffsetY.GetMin():
@@ -422,10 +422,10 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                 for videoFrameCount in group['VIDEOS']['number_of_frames']:
                     n_images += int(videoFrameCount)
                 for videoFrameTimes in group['VIDEOS']['time']:
-                    np.append(exp_times, videoFrameTimes)
+                    exp_times=np.append(exp_times, videoFrameTimes)
 
             # Find max time between images:
-            if n_images > 1:
+            if n_images > 1 and 'EXPOSURES' in group:
                 max_wait = 1.5*max(exp_times[0], max(abs(x - y) for (x, y) in zip(exp_times[1:], exp_times[:-1])))
             else:
                 max_wait = 1.5*exp_times[0] # Don't timeout if there's one image.
@@ -454,6 +454,7 @@ class PySpin_CameraServer(zprocess.ZMQServer):
                 self.logger.warning('no camera exposures or videos in this shot.')
                 return
 
+            n_images = 0
             if 'EXPOSURES' in group:
                 n_images = len(group['EXPOSURES'])
                 exp_times = group['EXPOSURES']['time']
