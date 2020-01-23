@@ -179,6 +179,19 @@ def setup_camera(cam, slope, bitdepth):
         logger.debug('Setting Acquisition Mode to multi-frame ...')
         set_property(cam.AcquisitionMode, PySpin.AcquisitionMode_MultiFrame)
 
+        # Get the node map:
+        nodemap = cam.GetNodeMap()
+        # Search for VideoMode:
+        node_video_mode = PySpin.CEnumerationPtr(nodemap.GetNode('VideoMode'))
+        if PySpin.IsAvailable(node_video_mode) and PySpin.IsWritable(node_video_mode):
+            # Retrieve the desired entry node from the enumeration node
+            node_video_mode_mode7 = PySpin.CEnumEntryPtr(node_video_mode.GetEntryByName('Mode0'))
+            if PySpin.IsAvailable(node_video_mode_mode7) and PySpin.IsReadable(node_video_mode_mode7):
+                # Retrieve the integer value from the entry node
+                node_video_mode_mode7_value = node_video_mode_mode7.GetValue()
+                # Set integer as new value for enumeration node
+                node_video_mode.SetIntValue(node_video_mode_mode7_value)
+
     except PySpin.SpinnakerException as ex:
         logger.error('Error: %s' % ex)
 
